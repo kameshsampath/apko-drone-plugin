@@ -1,0 +1,175 @@
+# apko lima configuration file
+#
+#   To start environment:
+#     limactl start --tty=false devtools-build-env.yaml
+#
+#   To obtain root shell (needed for apko build):
+#     limactl shell devtools-build-env sudo su -c "HOME=\"${HOME}\" ash"
+#
+#   Build an example image:
+#     apko build /examples/nginx.yaml tag /tmp/output.tar
+#
+#   Publish an example image:
+#      apko publish /examples/nginx.yaml <registry_ref>
+#
+#   Build an example image:
+#     melange build -r https://packages.wolfi.dev/os -k /usr/lib/wolfi-signing.rsa.pub --arch x86_64 examples/go-hello.yaml
+#
+#   To delete environment:
+#     limactl delete -f devtools-build-env
+#
+# This example requires Lima v0.7.0 or later.
+images:
+- location: "https://github.com/lima-vm/alpine-lima/releases/download/v0.2.26/alpine-lima-std-3.17.0-x86_64.iso"
+  arch: "x86_64"
+  digest: "sha512:93bf8d52ad2b3a6ef401a1a565f67e4f06f8022ec8963cad36cac4a25253f056ac0b755d1ed56b8993b0261440e0d5d38bad15b271864ed33cd3b02272738672"
+- location: "https://github.com/lima-vm/alpine-lima/releases/download/v0.2.26/alpine-lima-std-3.17.0-aarch64.iso"
+  arch: "aarch64"
+  digest: "sha512:aacd3a9e7a3231553bcee879c6770b379afbfad3dcfac7f274a80d6c490faf33f3c23b6130efa881f57c0c5235ced2877e2f45e3cdf4fefff11531d6023ae214"
+cpus: 4
+memory: 8GiB
+disk: 20GiB
+firmware:
+  legacyBIOS: true
+containerd:
+  system: false
+  user: false
+mounts:
+- location: "~"
+  writable: true
+- location: "/tmp/lima"
+  writable: true
+provision:
+- mode: system
+  script: |
+    #!/bin/ash
+    set -eux -o pipefail
+    apk update
+    apk add --update --no-cache vim git bubblewrap curl tar bash
+    apk add -X https://dl-cdn.alpinelinux.org/alpine/edge/community/ go-task
+    ln -s /usr/bin/go-task /usr/bin/task 
+
+    ######################################################################
+    ## APKO and other docker credential helpers
+    ## Ref: https://github.com/chainguard-dev/apko/blob/main/mac/lima/apko-playground.yaml
+    ######################################################################
+    
+    # Install apko from Alpine edge repo
+    apk add apko ko -X https://dl-cdn.alpinelinux.org/alpine/edge/testing/
+    # Add Docker credential helpers needed for pushing to various cloud registries
+    arch="$(uname -m)"
+    if [[ "${arch}" != "x86_64" ]] && [[ "${arch}" != "aarch64" ]]; then
+      echo "Unsupported arch: ${arch}. Exiting."
+      exit 1
+    fi
+    # 1. docker-credential-gcr (Google)
+    # https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases
+    if [[ "${arch}" == "x86_64" ]]; then
+      wget -O tmp.tar.gz https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v2.1.0/docker-credential-gcr_linux_amd64-2.1.0.tar.gz
+      sha256sum tmp.tar.gz | grep '^91cca7b5ca33133bcd217982be31d670efe7f1a33eb5be72e014f74feecac00f '
+    else
+      wget -O tmp.tar.gz https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v2.1.0/docker-credential-gcr_linux_arm64-2.1.0.tar.gz
+      sha256sum tmp.tar.gz | grep '^0fcde1af46a4ddc3135a673b61707a4e241b5fc994d493c6c0c03e9ebcf5eee4 '
+    fi
+    tar -xvf tmp.tar.gz docker-credential-gcr
+    chmod +x docker-credential-gcr
+    mv docker-credential-gcr /usr/bin
+    rm -f tmp.tar.gz
+    # 2. docker-credential-ecr-login (Amazon)
+    # https://github.com/awslabs/amazon-ecr-credential-helper/releases
+    if [[ "${arch}" == "x86_64" ]]; then
+      wget -O docker-credential-ecr-login https://amazon-ecr-credential-helper-releases.s3.us-east-2.amazonaws.com/0.6.0/linux-amd64/docker-credential-ecr-login
+      sha256sum docker-credential-ecr-login | grep '^af805202cb5d627dde2e6d4be1f519b195fd5a3a35ddc88d5010b4a4e5a98dd8 '
+    else
+      wget -O docker-credential-ecr-login https://amazon-ecr-credential-helper-releases.s3.us-east-2.amazonaws.com/0.6.0/linux-arm64/docker-credential-ecr-login
+      sha256sum docker-credential-ecr-login | grep '^760ecd36acf720cfe6a6ddb6fb20a32845e8886ea2e5333441c4bcca0a1d9620 '
+    fi
+    chmod +x docker-credential-ecr-login
+    mv docker-credential-ecr-login /usr/bin
+    # 3. docker-credential-acr-env (Microsoft)
+    # https://github.com/chrismellard/docker-credential-acr-env/releases
+    # No version yet available for aarch64, skipping.
+    # See: https://github.com/chrismellard/docker-credential-acr-env/issues/6
+    # 4. docker-credential-osxkeychain (mac system)
+    # Add a dummy version of docker-credential-osxkeychain typically found
+    # in mac ~/.docker/config.json
+    echo '#!/bin/ash' > /usr/bin/docker-credential-osxkeychain
+    echo 'echo "{\"ServerURL\":\"${1}\",\"Username\":\"\",\"Secret\":\"\"}"' \
+      >> /usr/bin/docker-credential-osxkeychain
+    chmod +x /usr/bin/docker-credential-osxkeychain
+    ######################################################################
+    ## MELANGE
+    ## Ref: https://github.com/chainguard-dev/apko/blob/main/mac/lima/apko-playground.yaml
+    ######################################################################
+
+    # install built-in pipelines
+    wget https://github.com/chainguard-dev/melange/archive/main/melange-main.tar.gz
+    mkdir -p /usr/share/melange
+    tar -C /usr/share/melange -zxf melange-main.tar.gz --strip-components=3 melange-main/pkg/build/pipelines
+    rm melange-main.tar.gz
+    cat <<EOF >> /etc/apk/repositories
+    https://packages.wolfi.dev/os
+    EOF
+    apk update --allow-untrusted
+    wget https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    mv wolfi-signing.rsa.pub /usr/lib
+
+- mode: user
+  script: |
+    #!/bin/sh
+    set -eux -o pipefail
+    kernel=$(uname -s)
+    case "${kernel}" in
+      Linux)
+        platform="linux"
+        ;;
+      *)
+        echo "Unknown, unsupported platform: ${kernel}." >&2
+        echo "Supported platforms: Linux" >&2
+        echo "Bailing out." >&2
+        exit 2
+    esac
+
+    machine=$(uname -m)
+    case "${machine}" in
+      x86_64*|i?86_64*|amd64*)
+        arch="amd64"
+        ;;
+      aarch64*|arm64*)
+        arch="arm64"
+        ;;
+      arm*)
+        arch="arm"
+        ;;
+      i?86*)
+        arch="386"
+        ;;
+      *)
+        echo "Unknown, unsupported architecture (${machine})." >&2
+        echo "Supported architectures x86_64, i686, arm, arm64." >&2
+        echo "Bailing out." >&2
+        exit 3
+        ;;
+    esac
+    wget https://github.com/chainguard-dev/melange/releases/download/v0.2.0/melange_0.2.0_${platform}_${arch}.tar.gz
+    tar -xzf melange_0.2.0_${platform}_${arch}.tar.gz
+    chmod +x melange_0.2.0_${platform}_${arch}/melange
+    sudo mv melange_0.2.0_${platform}_${arch}/melange /usr/local/bin/melange
+    rm -rf melange_0.2.0_${platform}_${arch}
+    rm melange_0.2.0_${platform}_${arch}.tar.gz
+    source .env 
+    set -x
+    echo -n "$IMAGE_REGISTRY_PASSWORD" | ko login $IMAGE_REGISTRY  -u $IMAGE_REGISTRY_USERNAME --password-stdin
+message: |-
+  ---
+  Run the following to get a root shell (needed to run apko build):
+    limactl shell melange-playground sudo su -c "HOME=\"${HOME}\" bash"
+  Try building an image:
+    apko build /examples/nginx.yaml tag /tmp/output.tar
+  
+  Try publishing an image:
+    apko publish /examples/nginx.yaml <registry_ref>
+  
+  Try building an APK:
+     melange build -r https://packages.wolfi.dev/os -k /usr/lib/wolfi-signing.rsa.pub --arch x86_64 examples/go-hello.yaml
+  ---

@@ -1,0 +1,17 @@
+kind: pipeline
+type: docker
+name: default
+
+steps:
+  - name: build image
+    image: kameshsampath/apko-drone-plugin:latest
+    pull: if-not-exists
+    settings:
+      config_file: image.yaml
+      image_repo: 
+        from_secret: image_repo
+      publish: true
+      image_registry_username:
+        from_secret: image_registry_username
+      image_registry_password:
+        from_secret: image_registry_password

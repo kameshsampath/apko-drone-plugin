@@ -1,0 +1,65 @@
+# Copyright 2022 Kamesh Sampath<kamesh.sampath@hotmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#  APKO DRONE PLUGIN
+#
+# This image configuration is used by the apko-drone plugin to build
+# OCI container images from APK packages
+#
+package:
+  name: apko-drone-plugin
+  version: 0.0.1
+  epoch: 0
+  description: "drone plugin to build OCI images using apko"
+  target-architecture:
+    - arm64
+    - amd64
+  copyright:
+    - paths:
+        - "*"
+      license: Apache-2.0
+  dependencies:
+    runtime:
+      - alpine-keys
+      - apko
+      - bash
+      - busybox
+      - curl
+      - wget
+
+environment:
+  contents:
+    repositories:
+      - https://packages.wolfi.dev/os
+    keyring:
+      - https://packages.wolfi.dev/bootstrap/stage3/wolfi-signing.rsa.pub
+    packages:
+      - busybox
+
+pipeline:
+  - runs: |
+      set +x 
+      mkdir -p "${{targets.destdir}}"/usr/bin
+      install -Dm755 run.sh "${{targets.destdir}}"/usr/bin/run
+  - name: Verify base64 encode/decode
+    runs: |
+      set -x
+      enc=$(echo "hello&0" | base64)
+      if [ "$enc" = "aGVsbG8mMAo=" ];
+      then
+        echo "$enc" | base64 -d 
+      else
+        echo "Unable encode/decode"
+      fi
+  - uses: strip

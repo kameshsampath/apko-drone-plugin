@@ -1,0 +1,13 @@
+contents:
+  repositories:
+    - https://dl-cdn.alpinelinux.org/alpine/edge/main
+  packages:
+    - alpine-base
+    - busybox 
+
+entrypoint:
+  command: /bin/sh -c 'echo "Hello World! Welcome to apko world"'
+  
+# optional environment configuration
+environment:
+  PATH: /usr/sbin:/sbin:/usr/bin:/bin

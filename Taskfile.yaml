@@ -1,0 +1,178 @@
+# https://taskfile.dev
+
+version: "3"
+
+env:
+  BUILDER_IMAGE: cgr.dev/chainguard/sdk:latest
+  LIMA_INSTANCE: apko-drone-plugin-dev-env
+
+tasks:
+  build_env:
+    desc: start lima-vm to run melange and apko commands
+    silent: true
+    cmds:
+      - limactl start --name={{.LIMA_INSTANCE}} --tty=false lima-vm.yaml
+
+  dev_shell:
+    silent: true
+    desc: shell into the lima vm
+    cmds:
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "HOME=\"${HOME}\" bash"
+
+  delete_build_env:
+    desc: stop and delete lima-vm {{.LIMA_INSTANCE}}
+    silent: true
+    cmds:
+      - limactl delete --force {{.LIMA_INSTANCE}}
+
+  gen_key:
+    desc: Generates keys to sign the local packages
+    silent: true
+    status:
+      - test -f melange.rsa.pub
+      - test -f melange.rsa
+    cmds:
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "melange keygen"
+
+  build_plugin_packages:
+    desc: |
+      Builds the drone plugin and its dependant packages
+    silent: true
+    deps:
+      - gen_key
+    cmds:
+      - task: pkg_amazon_ecr_credential_helper
+      - task: pkg_docker_credential_gcr
+      - task: pkg_apko_drone_plugin
+
+  pkg_amazon_ecr_credential_helper:
+    internal: true
+    sources:
+      - "{{.PACKAGE_NAME}}.yaml"
+    generates:
+      - "packages/aarch64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+      - "packages/x86_64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+    cmds:
+      - task: package
+        vars:
+          PACKAGE_NAME: "{{.PACKAGE_NAME}}"
+          PACKAGE_VERSION: "{{.PACKAGE_VERSION}}"
+    vars:
+      PACKAGE_NAME: amazon-ecr-credential-helper
+      PACKAGE_VERSION: 0.6.0
+
+  pkg_docker_credential_gcr:
+    internal: true
+    sources:
+      - "{{.PACKAGE_NAME}}.yaml"
+    generates:
+      - "packages/aarch64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+      - "packages/x86_64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+    cmds:
+      - task: package
+        vars:
+          PACKAGE_NAME: "{{.PACKAGE_NAME}}"
+          PACKAGE_VERSION: "{{.PACKAGE_VERSION}}"
+    vars:
+      PACKAGE_NAME: docker-credential-gcr
+      PACKAGE_VERSION: 2.1.6
+
+  pkg_apko_drone_plugin:
+    internal: true
+    sources:
+      - "{{.PACKAGE_NAME}}.yaml"
+      - run.sh
+    generates:
+      - "packages/aarch64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+      - "packages/x86_64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+    cmds:
+      - task: package
+        vars:
+          PACKAGE_NAME: "{{.PACKAGE_NAME}}"
+          PACKAGE_VERSION: "{{.PACKAGE_VERSION}}"
+    vars:
+      PACKAGE_NAME: apko-drone-plugin
+      PACKAGE_VERSION: 0.0.1
+
+  build_plugin:
+    desc: |
+      Build the Kubernetes Dev Tools image with all the the tools that are needed for building and deploying applications using kubernetes
+    silent: true
+    deps:
+      - build_plugin_packages
+    cmds:
+      - mkdir -p dist/{{.NAME}}
+      - task: image_arm64
+      - task: image_amd64
+
+  load:
+    desc: loads the plugin image to local docker daemon
+    silent: true
+    deps:
+      - build_plugin
+    cmds:
+      - docker load < {{.ROOT_DIR}}/dist/{{.NAME}}/container_$(uname -m).tar
+
+  # creates the apk package
+  package:
+    desc: builds the apk package
+    silent: false
+    internal: true
+    label: "package-{{.PACKAGE_NAME}}"
+    sources:
+      - "{{.PACKAGE_NAME}}.yaml"
+      - run.sh
+    generates:
+      - "packages/aarch64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+      - "packages/x86_64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
+    cmds:
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "melange build --arch=arm64,amd64 --signing-key melange.rsa {{.PACKAGE_NAME}}.yaml"
+
+  # publishes the plugin image
+  publish_plugin:
+    desc: publishes the drone plugin image to remote registry
+    silent: false
+    cmds:
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko publish plugin.yaml docker.io/kameshsampath/apko-drone-plugin:{{.TAG}}"
+    vars:
+      TAG:
+       sh: svu patch --strip-prefix --suffix=alpha
+
+  # builds the image
+  image_arm64:
+    silent: false
+    internal: true
+    label: "plugin-arm64-image"
+    sources:
+      - plugin.yaml
+      - amazon-ecr-credential-helper.yaml
+      - docker-credential-gcr.yaml
+      - apko-drone-plugin.yaml
+      - run.sh
+    generates:
+      - dist/apko-drone-plugin/container_arm64.tar
+    cmds:
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko build --build-arch=arm64 $IMAGE_FILE $PUBLISH_REPO ./dist/{{.NAME}}/container_arm64.tar --debug"
+
+  image_amd64:
+    silent: true
+    internal: true
+    label: "plugin-amd64-image"
+    sources:
+      - plugin.yaml
+      - amazon-ecr-credential-helper.yaml
+      - docker-credential-gcr.yaml
+      - apko-drone-plugin.yaml
+      - run.sh
+    generates:
+      - dist/apko-drone-plugin/container_amd64.tar
+    cmds:
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko build --build-arch=arm64 $IMAGE_FILE $PUBLISH_REPO ./dist/{{.NAME}}/container_amd64.tar --debug"
+
+  clean:
+    desc: Cleans the packages and dist directory
+    silent: true
+    cmds:
+      - rm -rf packages
+      - rm -rf dist
+      - mkdir -p dist packages
