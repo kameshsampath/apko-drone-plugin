@@ -5,6 +5,7 @@ version: "3"
 env:
   BUILDER_IMAGE: cgr.dev/chainguard/sdk:latest
   LIMA_INSTANCE: apko-drone-plugin-dev-env
+  PLUGIN_IMAGE: docker.io/kameshsampath/apko-drone-plugin
 
 tasks:
   build_env:
@@ -132,11 +133,15 @@ tasks:
   publish_plugin:
     desc: publishes the drone plugin image to remote registry
     silent: false
+    preconditions:
+      - sh: '! crane manifest {{.PLUGIN_IMAGE}}:{{.TAG}} &>/dev/null && true'
+        msg: "{{.TAG}} for image {{.PLUGIN_IMAGE}} already exists, skipping build"
     cmds:
-      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko publish plugin.yaml docker.io/kameshsampath/apko-drone-plugin:{{.TAG}}"
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko publish plugin.yaml {{.PLUGIN_IMAGE}}:{{.TAG}}"
+      - crane tag "{{.PLUGIN_IMAGE}}:{{.TAG}}" latest
     vars:
       TAG:
-       sh: svu patch --strip-prefix --suffix=alpha
+       sh: svu patch --strip-prefix
 
   # builds the image
   image_arm64:

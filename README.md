@@ -72,6 +72,7 @@ The plugin relies on [apko](https://github.com/chainguard-dev/apko) and [melange
 
 The plugin build relies on:
 
+- [crane](https://github.com/google/go-containerregistry)
 - [limactl](https://github.com/lima-vm/lima)
 - [taskfile](https://taskfile.dev)
 
