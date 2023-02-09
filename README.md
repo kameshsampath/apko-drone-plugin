@@ -2,7 +2,7 @@
 
 Drone plugin to built OCI container image using [apko](https://github.com/chainguard-dev/apko)
 
->**IMPORTANT:** This plugin is under development and the parameters are subject to change
+> **IMPORTANT:** This plugin is under development and the parameters are subject to change
 
 ## Usage
 
@@ -13,22 +13,21 @@ The following settings changes this plugin's behavior,
 - `publish`: Whether to publish the image to `image_repo`. Defaults to `false` which will just build the image tarball.
 - `archs`: The `linux` architecture for which the images will be built. Defaults `$(uname -m)`. Valid values are: `amd64`, `arm64`.
 - `build_output_dir`: The output directory relative to `config_file` where the build artifacts will be generated.
+- `insecure`: Push to insecure registry.
 
-### Elastic Container Registry Credentials
+### Container Registry Credentials
 
-- `aws_access_key_id`: The AWS `AWS_ACCESS_KEY_ID`
-- `aws_secret_access_key`: The AWS `PLUGIN_AWS_SECRET_ACCESS_KEY`
+- `image_registry_username`: The user name that will be used to push the image to `image_repo`. Applicable when the `image_repo` is not GAR, ECR.
+- `image_registry_password`: The user password that will be used to push the image to `image_repo`. Applicable when the `image_repo` is not GAR, ECR.
 
 ### Google Artifact Registry Credentials
 
 - `google_application_credentials`: The base64 encoded Google application credentials i.e. SA key.json. This parameter is useful only when your `image_repo` is [Google Artifact registry](https://cloud.google.com/artifact-registry/docs)
 
-### Container Registry  Credentials
+### Elastic Container Registry Credentials
 
-- `image_registry_username`: The user name that will be used to push the image to `image_repo`. Applicable when the `image_repo` is not GAR, ECR.
-- `image_registry_password`: The user password that will be used to push the image to `image_repo`. Applicable when the `image_repo` is not GAR, ECR.
-
-> **TIP**: You can also create dotenv file `.env` using `.env.example` and place on the root of the project. That gets automatically sourced by the plugin and the values from it will be used.
+- `aws_access_key_id`: The AWS `AWS_ACCESS_KEY_ID`
+- `aws_secret_access_key`: The AWS `AWS_SECRET_ACCESS_KEY`
 
 ```yaml
 kind: pipeline
@@ -36,15 +35,15 @@ type: docker
 name: default
 
 steps:
-- name: build image
-  image: kameshsampath/apko-drone-plugin
-  settings:
-    config_file: image.yaml
-    image_repo: example/hello-world:0.0.1
-    publish: false
-    archs:
-      - amd64
-      - arm64
+  - name: build image
+    image: kameshsampath/apko-drone-plugin
+    settings:
+      config_file: image.yaml
+      image_repo: example/hello-world:0.0.1
+      publish: false
+      archs:
+        - amd64
+        - arm64
 ```
 
 Now load the image using the command,
@@ -57,14 +56,14 @@ docker load < ./dist/hello-world-0.0.1_$(uname -m).tar
 
 Checkout examples in folder [examples](./examples/). You need to have [drone](https://docs.drone.io/cli/install/) CLI to execute the examples locally.
 
-|Example|Description
-|:-------|:-----------
-|[Any OCI Registry](./examples/any-registry/README.md) | Build and deploy to any OCI compliant registry
-|[Any OCI Registry Multi Architecture](./examples/any-registry-multiarch/README.md) | Build and deploy multi architecture images to any OCI compliant registry
-|[Elastic Container Registry](./examples/ecr/README.md) | Build and deploy to Elastic Container Registry(ECR)
-|[Google Artifact Registry](./examples/gar/README.md) | Build and deploy to Google Artifact registry(GAR)
-|[No Push](./examples/tarball/README.md) | Build OCI tarball without pushing to remote repository.
-|[Multi Architecture](./examples/tarball-multiarch/README.md) | Build multi architecture OCI tarball without pushing to remote repository.
+| Example                                                                            | Description                                                                |
+| :--------------------------------------------------------------------------------- | :------------------------------------------------------------------------- |
+| [Any OCI Registry](./examples/any-registry/README.md)                              | Build and deploy to any OCI compliant registry                             |
+| [Any OCI Registry Multi Architecture](./examples/any-registry-multiarch/README.md) | Build and deploy multi architecture images to any OCI compliant registry   |
+| [Elastic Container Registry](./examples/ecr/README.md)                             | Build and deploy to Elastic Container Registry(ECR)                        |
+| [Google Artifact Registry](./examples/gar/README.md)                               | Build and deploy to Google Artifact registry(GAR)                          |
+| [No Push](./examples/tarball/README.md)                                            | Build OCI tarball without pushing to remote repository.                    |
+| [Multi Architecture](./examples/tarball-multiarch/README.md)                       | Build multi architecture OCI tarball without pushing to remote repository. |
 
 ## Building Plugin
 

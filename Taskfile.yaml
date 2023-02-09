@@ -9,12 +9,16 @@ env:
 
 tasks:
   build_env:
+    aliases:
+      - dev_env
     desc: start lima-vm to run melange and apko commands
     silent: true
     cmds:
       - limactl start --name={{.LIMA_INSTANCE}} --tty=false lima-vm.yaml
 
   dev_shell:
+    aliases:
+      - shell
     silent: true
     desc: shell into the lima vm
     cmds:
@@ -26,21 +30,12 @@ tasks:
     cmds:
       - limactl delete --force {{.LIMA_INSTANCE}}
 
-  gen_key:
-    desc: Generates keys to sign the local packages
-    silent: true
-    status:
-      - test -f melange.rsa.pub
-      - test -f melange.rsa
-    cmds:
-      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "melange keygen"
-
   build_plugin_packages:
+    aliases:
+      - packages
     desc: |
       Builds the drone plugin and its dependant packages
     silent: true
-    deps:
-      - gen_key
     cmds:
       - task: pkg_amazon_ecr_credential_helper
       - task: pkg_docker_credential_gcr
@@ -96,6 +91,8 @@ tasks:
       PACKAGE_VERSION: 0.0.1
 
   build_plugin:
+    aliases:
+      - image
     desc: |
       Build the Kubernetes Dev Tools image with all the the tools that are needed for building and deploying applications using kubernetes
     silent: true
@@ -127,18 +124,21 @@ tasks:
       - "packages/aarch64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
       - "packages/x86_64/{{.PACKAGE_NAME}}-{{.PACKAGE_VERSION}}-r0.apk"
     cmds:
-      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "melange build --arch=arm64,amd64 --signing-key melange.rsa {{.PACKAGE_NAME}}.yaml"
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "HOME=\"${HOME}\" melange build --arch=arm64,amd64 --signing-key ${HOME}/.ssh/drone-plugin-melange.rsa {{.PACKAGE_NAME}}.yaml"
 
   # publishes the plugin image
   publish_plugin:
     desc: publishes the drone plugin image to remote registry
     silent: false
+    deps:
+      - packages
     preconditions:
       - sh: '! crane manifest {{.PLUGIN_IMAGE}}:{{.TAG}} &>/dev/null && true'
         msg: "{{.TAG}} for image {{.PLUGIN_IMAGE}} already exists, skipping build"
     cmds:
-      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko publish plugin.yaml {{.PLUGIN_IMAGE}}:{{.TAG}}"
-      - crane tag "{{.PLUGIN_IMAGE}}:{{.TAG}}" latest
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "echo \"${DOCKERHUB_PASSWORD}\" | ko login docker.io -u \"${DOCKERHUB_USERNAME}\" --password-stdin"
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko publish --arch=arm64,amd64 plugin.yaml {{.PLUGIN_IMAGE}}:{{.TAG}}"
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "crane tag "{{.PLUGIN_IMAGE}}:{{.TAG}}" latest"
     vars:
       TAG:
        sh: svu patch --strip-prefix
@@ -172,7 +172,7 @@ tasks:
     generates:
       - dist/apko-drone-plugin/container_amd64.tar
     cmds:
-      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko build --build-arch=arm64 $IMAGE_FILE $PUBLISH_REPO ./dist/{{.NAME}}/container_amd64.tar --debug"
+      - limactl shell {{.LIMA_INSTANCE}} sudo su -c "apko build --build-arch=amd64 $IMAGE_FILE $PUBLISH_REPO ./dist/{{.NAME}}/container_amd64.tar --debug"
 
   clean:
     desc: Cleans the packages and dist directory

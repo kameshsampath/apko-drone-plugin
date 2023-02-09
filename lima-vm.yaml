@@ -55,7 +55,7 @@ provision:
     ######################################################################
     
     # Install apko from Alpine edge repo
-    apk add apko ko -X https://dl-cdn.alpinelinux.org/alpine/edge/testing/
+    apk add apko crane ko -X https://dl-cdn.alpinelinux.org/alpine/edge/testing/
     # Add Docker credential helpers needed for pushing to various cloud registries
     arch="$(uname -m)"
     if [[ "${arch}" != "x86_64" ]] && [[ "${arch}" != "aarch64" ]]; then
